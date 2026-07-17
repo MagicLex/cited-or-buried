@@ -13,8 +13,8 @@ truth. We show the truth first.
 from __future__ import annotations
 
 import html
+import math
 import re
-from pathlib import Path
 from urllib.parse import urlparse
 
 import numpy as np
@@ -42,11 +42,12 @@ def _divergence(g) -> float:
     return float(np.mean([max(0, r - 1) for r in cited_ranks]))
 
 
-def _pick_hero(by_q) -> str | None:
-    """One clean, real example for the top of the page: search's #1 was not quoted,
-    yet a page well below it was, and both pages actually fetched (so the reasons are
-    real). Deterministic, model-independent: the gap is a fact about the data."""
-    best, best_key = None, (-1, -1.0)
+def _showcase(by_q, n: int = 6) -> list:
+    """Real gap examples for the rotating hero: search's #1 was not quoted, yet a
+    page well below it was, both fetched, and the model caught it (high odds on the
+    below-top citation) so each slide shows the tool working, not just the gap.
+    Deterministic; the gap itself is a fact about the data, not the model."""
+    cands = []
     for qid, g in by_q.items():
         g = g.sort_values("rank")
         top = g.iloc[0]
@@ -55,16 +56,22 @@ def _pick_hero(by_q) -> str | None:
             continue
         first_cited = cited.sort_values("rank").iloc[0]
         r = int(first_cited["rank"])
-        if not first_cited["fetch_ok"] or r < 4 or r > 7:
+        if not first_cited["fetch_ok"] or r < 4 or r > 8:
             continue
         if g["fetch_ok"].sum() < 6 or not (4 <= len(str(top["query"]).split()) <= 12):
             continue
-        # lead with an example the model clearly caught (high odds on a below-top
-        # citation), so the hero shows the tool working, not just the gap
-        key = (float(first_cited["model_score"]), r)
-        if key > best_key:
-            best_key, best = key, qid
-    return best
+        cands.append((float(first_cited["model_score"]), r, qid))
+    cands.sort(reverse=True)
+    seen, out = set(), []
+    for _, _, qid in cands:  # de-dup near-identical topics by first cited domain
+        dom = _domain(by_q[qid][by_q[qid]["cited"] == 1].sort_values("rank").iloc[0]["url"])
+        if dom in seen:
+            continue
+        seen.add(dom)
+        out.append(qid)
+        if len(out) >= n:
+            break
+    return out
 
 
 def boot() -> None:
@@ -84,7 +91,7 @@ def boot() -> None:
     model = max(mr.get_models("cited_ranker"), key=lambda m: m.version)
     state["model_version"] = model.version
     state["metrics"] = {re.sub(r"_+", "_", k): v for k, v in (model.training_metrics or {}).items()}
-    print(f"boot: {len(state['by_q'])} queries, hero={state['hero']}, model v{model.version}, "
+    print(f"boot: {len(state['by_q'])} queries, showcase={state['showcase']}, model v{model.version}, "
           f"deployment {'up' if state['deployment'] else 'down'}", flush=True)
 
 
@@ -107,7 +114,7 @@ def _index(df) -> None:
             "n": len(g), "ncited": len(c),
         })
     state["queries"] = sorted(rows, key=lambda r: -r["div"])
-    state["hero"] = _pick_hero(state["by_q"])
+    state["showcase"] = _showcase(state["by_q"])
 
 
 # ---- human-language reasons -------------------------------------------------
@@ -148,14 +155,16 @@ def _fav(url: str, size: int = 32) -> str:
 # ---- styling ----------------------------------------------------------------
 
 CSS = """
-:root{--bg:#faf9f6;--card:#fff;--ink:#17171c;--dim:#5f5f6b;--faint:#9a9aa6;
+:root{--bg:#f7f6f2;--card:#fff;--ink:#17171c;--dim:#5f5f6b;--faint:#9a9aa6;
 --line:#eae7df;--line2:#ddd9cf;--gold:#a26c00;--gold2:#c98a10;--goldbg:#fbf4e4;
---goldln:#e7d3a3;--slate:#3b4b66;--slatebg:#eef1f6;--bad:#b23b34;--good:#1f7a52;
+--goldln:#e7d3a3;--slate:#3b4b66;--slate2:#7c8aa3;--slatebg:#eef1f6;
+--bad:#b23b34;--good:#1f7a52;
 --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-font:15.5px/1.62 var(--sans);-webkit-font-smoothing:antialiased}
+body{margin:0;background:
+radial-gradient(1200px 480px at 12% -10%,#fdf6e6 0%,transparent 60%),var(--bg);
+color:var(--ink);font:15.5px/1.62 var(--sans);-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .wrap{max-width:1000px;margin:0 auto;padding:20px 22px 100px}
@@ -164,87 +173,123 @@ padding-bottom:14px;border-bottom:1px solid var(--line)}
 .brand{font-size:17px;font-weight:680;letter-spacing:-.01em}
 .brand .d{color:var(--gold)}
 .nav a{color:var(--dim);font-size:14px;font-weight:550;margin-left:20px;padding-bottom:2px}
+.nav a:hover{color:var(--ink)}
 .nav a.on{color:var(--ink);border-bottom:2px solid var(--gold)}
 .fav{border-radius:5px;vertical-align:middle;background:#fff;flex:none}
+.btn{background:var(--gold);color:#fff;font-weight:620;font-size:14.5px;padding:11px 20px;
+border-radius:10px;border:0;cursor:pointer;display:inline-block;
+transition:background .15s,transform .12s,box-shadow .15s}
+.btn:hover{background:var(--gold2);transform:translateY(-1px);box-shadow:0 6px 16px -8px #a26c0099}
+.hint{color:var(--faint);font-size:13px}
+.back{color:var(--dim);font-size:13.5px;font-weight:550}.back:hover{color:var(--gold)}
+
+/* reveal-on-load (progressive: content is already in the DOM) */
+.rise{opacity:0;transform:translateY(10px);animation:rise .55s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
 
 /* hero */
-.hero{margin:34px 0 8px}
+.hero{margin:32px 0 6px}
+.herogrid{display:grid;grid-template-columns:1.02fr 1.05fr;gap:34px;align-items:center;margin:30px 0 4px}
+.herogrid .show{margin:0}
+@media(max-width:900px){.herogrid{grid-template-columns:1fr;gap:20px}}
 .kick{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
 color:var(--gold);font-weight:600}
-.hero h1{font-size:clamp(30px,5vw,46px);line-height:1.08;font-weight:720;letter-spacing:-.022em;
-margin:12px 0 14px;max-width:16ch}
+.heroleft h1{font-size:clamp(30px,4.4vw,44px);line-height:1.07;font-weight:730;letter-spacing:-.024em;
+margin:12px 0 14px;text-wrap:balance}
+.heroleft h1 em{font-style:normal;color:var(--gold)}
+.heroleft .lede{font-size:16.5px;color:var(--dim);margin:0 0 20px}
+.hero h1{font-size:clamp(28px,4vw,40px);line-height:1.07;font-weight:720;letter-spacing:-.022em;
+margin:12px 0 14px;max-width:17ch;text-wrap:balance}
 .hero h1 em{font-style:normal;color:var(--gold)}
-.hero .lede{font-size:17px;color:var(--dim);max-width:620px;margin:0}
+.hero .lede{font-size:16.5px;color:var(--dim);max-width:600px;margin:0}
 
-/* the concrete example card */
-.demo{background:var(--card);border:1px solid var(--line);border-radius:16px;
-box-shadow:0 1px 3px #0000000d,0 8px 24px -18px #0000002e;padding:22px 24px;margin:26px 0}
-.demo .q{font-size:13px;color:var(--faint);margin:0 0 16px}
-.demo .q b{color:var(--ink);font-weight:600}
-.duel{display:grid;grid-template-columns:1fr;gap:12px}
-.side{border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-.side.lose{background:#fbfbfa}
-.side.win{background:var(--goldbg);border-color:var(--goldln)}
-.side .lab{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.side.lose .lab{color:var(--slate)}.side.win .lab{color:var(--gold)}
-.side .lab .tag{margin-left:auto;font-weight:600}
-.doc{display:flex;align-items:center;gap:11px}
-.doc .fav{width:26px;height:26px}
-.doc .txt{min-width:0}
-.doc .dom{font-weight:620;font-size:14.5px}
-.doc .ti{color:var(--dim);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rankchip{font-family:var(--mono);font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;
-background:var(--slatebg);color:var(--slate);flex:none}
-.side.win .rankchip{background:#fff;color:var(--gold);border:1px solid var(--goldln)}
-.more{margin-top:9px;font-size:12.5px;color:var(--dim)}
-.arrow{text-align:center;color:var(--faint);font-size:13px;margin:2px 0}
+/* rotating showcase: one real query at a time, as a live bar chart */
+.show{background:var(--card);border:1px solid var(--line);border-radius:18px;
+box-shadow:0 1px 3px #0000000d,0 16px 40px -28px #0000003a;padding:20px 22px 16px;margin:26px 0 10px;
+position:relative;overflow:hidden}
+.show::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;
+background:linear-gradient(90deg,var(--gold),#e6cd8a,transparent)}
+.slides{position:relative;min-height:238px}
+.slide{position:absolute;inset:0;opacity:0;visibility:hidden;
+transition:opacity .5s ease;pointer-events:none}
+.slide.on{position:relative;opacity:1;visibility:visible;pointer-events:auto}
+.slide .q{font-size:15.5px;font-weight:600;margin:0 0 3px;letter-spacing:-.01em}
+.slide .q .lead{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:600;
+letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:5px}
+.slide .say{font-size:13.5px;color:var(--dim);margin:2px 0 16px}
+.slide .say b{color:var(--gold);font-weight:640}.slide .say s{color:var(--slate);text-decoration:none;font-weight:600}
+
+/* the bar chart: one bar per result, in search order, height = model odds */
+.chart{display:flex;align-items:flex-end;gap:7px;height:150px;padding-top:20px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:0;height:100%;
+justify-content:flex-end;min-width:0}
+.bar .col{width:100%;max-width:46px;border-radius:6px 6px 3px 3px;position:relative;
+height:var(--h);background:linear-gradient(180deg,var(--slate2),var(--slate));
+transform-origin:bottom;transition:filter .15s}
+.on .bar .col{animation:grow .6s cubic-bezier(.2,.8,.3,1) backwards;animation-delay:var(--d)}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.bar.hit .col{background:linear-gradient(180deg,var(--gold2),var(--gold));
+box-shadow:0 0 0 1px #fff,0 6px 14px -6px #a26c0080}
+.bar .col .tick{position:absolute;top:-19px;left:50%;transform:translateX(-50%);
+font-family:var(--mono);font-size:11px;font-weight:700;color:var(--gold);white-space:nowrap}
+.bar .rk{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:7px}
+.bar.hit .rk{color:var(--gold);font-weight:700}
+.bar .col:hover{filter:brightness(1.06)}
+.dots{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.dots b{width:6px;height:6px;border-radius:50%;background:var(--line2);cursor:pointer;
+transition:background .2s,transform .2s}
+.dots b.on{background:var(--gold);transform:scale(1.25)}
+.axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;
+color:var(--faint);letter-spacing:.05em;text-transform:uppercase;margin-top:4px}
 
 /* stat strip */
 .strip{display:flex;flex-wrap:wrap;gap:12px;margin:22px 0}
 .stat{flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);
-border-radius:12px;padding:15px 17px}
-.stat .n{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--gold);letter-spacing:-.02em}
+border-radius:12px;padding:15px 17px;transition:transform .12s,box-shadow .15s}
+.stat:hover{transform:translateY(-2px);box-shadow:0 8px 20px -14px #0000003a}
+.stat .n{font-family:var(--mono);font-size:27px;font-weight:730;color:var(--gold);letter-spacing:-.02em}
 .stat .c{font-size:12.5px;color:var(--dim);margin-top:3px;line-height:1.4}
+.stat .c b{color:var(--ink)}
 
-/* CTA */
-.cta-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:26px 0 8px}
-.btn{background:var(--gold);color:#fff;font-weight:620;font-size:14.5px;padding:11px 20px;
-border-radius:10px;border:0;cursor:pointer;display:inline-block}
-.btn:hover{background:var(--gold2)}
-.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line2)}
-.hint{color:var(--faint);font-size:13px}
+.cta-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:24px 0 8px}
 
 /* browse list */
 .sechead{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
 color:var(--faint);margin:40px 0 12px;display:flex;justify-content:space-between;align-items:baseline}
 .qlist{display:flex;flex-direction:column;gap:7px}
 .qrow{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);
-border-radius:11px;padding:12px 15px}
-.qrow:hover{border-color:var(--line2);box-shadow:0 2px 10px -6px #00000024}
+border-radius:11px;padding:12px 15px;transition:border-color .12s,transform .12s,box-shadow .15s}
+.qrow:hover{border-color:var(--goldln);transform:translateX(3px);box-shadow:0 4px 14px -8px #0000002e}
 .qrow .q{flex:1;font-size:15px;font-weight:520;min-width:0}
 .qrow .chips{display:flex;gap:5px;flex:none}
 .qrow .qc{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--gold);
 background:var(--goldbg);border:1px solid var(--goldln);border-radius:999px;padding:2px 8px}
-.qrow .go{color:var(--faint);font-size:16px;flex:none}
+.qrow .go{color:var(--faint);font-size:16px;flex:none;transition:transform .12s,color .12s}
+.qrow:hover .go{color:var(--gold);transform:translateX(2px)}
 
 /* query detail */
-.back{color:var(--dim);font-size:13.5px;font-weight:550}
-.qtitle{font-size:24px;font-weight:680;letter-spacing:-.015em;margin:14px 0 4px}
-.qverdict{color:var(--dim);font-size:15px;margin:0 0 22px;max-width:640px}
+.qtitle{font-size:25px;font-weight:690;letter-spacing:-.017em;margin:14px 0 4px;text-wrap:balance}
+.qverdict{color:var(--dim);font-size:15.5px;margin:0 0 20px;max-width:660px}
 .qverdict b{color:var(--gold)}
+.detchart{background:var(--card);border:1px solid var(--line);border-radius:14px;
+padding:18px 20px 14px;margin:0 0 24px;box-shadow:0 1px 2px #0000000a}
+.detchart .cap{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+color:var(--faint);margin:0 0 4px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-@media(max-width:780px){.cols{grid-template-columns:1fr}}
+@media(max-width:780px){.cols{grid-template-columns:1fr}.chart{height:120px}}
 .colh{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
 color:var(--faint);margin:0 0 12px}
-.rankrow{display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line)}
+.rankrow{display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line);
+transition:background .12s}
+.rankrow:hover{background:#faf8f2}
 .rankrow .r{font-family:var(--mono);font-size:13px;color:var(--faint);width:26px;flex:none;text-align:right}
 .rankrow.hit .r{color:var(--gold);font-weight:700}
 .rankrow .txt{min-width:0;flex:1}
 .rankrow .dom{font-size:13.5px;font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rankrow .qd{font-size:11px;color:var(--gold);font-weight:600}
 .card{background:var(--card);border:1px solid var(--goldln);border-radius:13px;padding:15px 16px;
-margin-bottom:12px;box-shadow:0 1px 2px #0000000a}
+margin-bottom:12px;box-shadow:0 1px 2px #0000000a;transition:transform .12s,box-shadow .15s}
+.card:hover{transform:translateY(-2px);box-shadow:0 10px 26px -16px #a26c0055}
 .card .hd{display:flex;align-items:center;gap:11px;margin-bottom:8px}
 .card .hd .txt{min-width:0;flex:1}
 .card .hd .dom{font-weight:640;font-size:15px}
@@ -267,19 +312,69 @@ label.f{font-size:13px;color:var(--dim);font-weight:550;margin-bottom:-4px}
 input[type=text]{background:#fff;border:1px solid var(--line2);border-radius:10px;padding:12px 14px;
 color:var(--ink);font-size:15px;width:100%;font-family:var(--sans)}
 input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px #a26c001f}
-.gauge{background:var(--card);border:1px solid var(--goldln);border-radius:16px;padding:24px;margin:8px 0}
-.gauge .big{font-family:var(--mono);font-size:60px;font-weight:750;line-height:1;letter-spacing:-.03em;color:var(--gold)}
-.gauge .verd{font-size:17px;font-weight:640;margin:4px 0 14px}
-.track{height:9px;background:#f0eee7;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
-.track i{display:block;height:100%;background:linear-gradient(90deg,var(--gold2),var(--gold))}
-.gauge .sub{font-size:13px;color:var(--dim);margin:14px 0 0}
-.lever{display:flex;align-items:center;gap:9px;font-size:14px;padding:7px 0;border-top:1px solid var(--line)}
-.lever .ic{font-family:var(--mono);font-weight:700;width:18px;flex:none}
+.result{background:var(--card);border:1px solid var(--goldln);border-radius:16px;padding:24px;margin:8px 0;
+box-shadow:0 1px 3px #0000000d,0 18px 44px -30px #a26c0055}
+.dialwrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.dial{position:relative;width:132px;height:132px;flex:none}
+.dial svg{transform:rotate(-90deg)}
+.dial .arc{stroke-dasharray:var(--c);stroke-dashoffset:var(--off);
+animation:fill 1.1s cubic-bezier(.3,.7,.3,1) forwards}
+@keyframes fill{from{stroke-dashoffset:var(--c)}to{stroke-dashoffset:var(--off)}}
+.dial .n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dial .n b{font-family:var(--mono);font-size:34px;font-weight:760;letter-spacing:-.03em;color:var(--gold);line-height:1}
+.dial .n span{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+.rlab .verd{font-size:20px;font-weight:680;letter-spacing:-.01em;margin:0 0 4px}
+.rlab .sub{font-size:13.5px;color:var(--dim);margin:0;max-width:340px}
+.rlab .sub b{color:var(--ink)}.rlab .sub a{color:var(--gold)}
+.levers{margin-top:18px;border-top:1px solid var(--line);padding-top:6px}
+.lever{display:flex;align-items:center;gap:10px;font-size:14px;padding:8px 0;border-bottom:1px solid var(--line)}
+.lever:last-child{border-bottom:0}
+.lever .ic{font-family:var(--mono);font-weight:800;width:18px;flex:none;text-align:center}
 .lever.y .ic{color:var(--good)}.lever.n .ic{color:var(--bad)}.lever.d .ic{color:var(--faint)}
 .err{color:var(--bad);font-size:14px;background:#fbeceb;border:1px solid #f0d3d0;border-radius:10px;padding:12px 14px}
 footer{margin-top:56px;color:var(--faint);font-size:12px;border-top:1px solid var(--line);
 padding-top:16px;line-height:1.7}
 footer a{color:var(--gold)}
+
+@media (prefers-reduced-motion:reduce){
+*{animation:none!important;transition:none!important}
+.rise{opacity:1;transform:none}
+.slide{position:relative;opacity:1;visibility:visible}
+.slide:not(:first-child){display:none}
+.dial .arc{stroke-dashoffset:var(--off)}}
+"""
+
+
+# JS is progressive enhancement only: all content is already server-rendered.
+JS = """
+(function(){
+ var rm=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+ // count-up the stat numbers
+ document.querySelectorAll('[data-count]').forEach(function(el){
+  var to=parseFloat(el.getAttribute('data-count')), dec=(el.getAttribute('data-dec')|0),
+      suf=el.getAttribute('data-suf')||'';
+  if(rm){el.textContent=to.toFixed(dec)+suf;return;}
+  var t0=null,D=900;
+  function step(t){t0=t0||t;var k=Math.min(1,(t-t0)/D);var e=1-Math.pow(1-k,3);
+   el.textContent=(to*e).toFixed(dec)+suf; if(k<1)requestAnimationFrame(step);}
+  requestAnimationFrame(step);
+ });
+ // rotating showcase
+ var slides=[].slice.call(document.querySelectorAll('.slide'));
+ var dots=[].slice.call(document.querySelectorAll('.dots b'));
+ if(slides.length>1){
+  var i=0,timer=null;
+  function go(n){slides[i].classList.remove('on');dots[i]&&dots[i].classList.remove('on');
+   i=(n+slides.length)%slides.length;
+   slides[i].classList.add('on');dots[i]&&dots[i].classList.add('on');}
+  function play(){if(rm)return;stop();timer=setInterval(function(){go(i+1);},4200);}
+  function stop(){if(timer){clearInterval(timer);timer=null;}}
+  dots.forEach(function(d,n){d.addEventListener('click',function(){go(n);play();});});
+  var show=document.querySelector('.show');
+  if(show){show.addEventListener('mouseenter',stop);show.addEventListener('mouseleave',play);}
+  play();
+ }
+})();
 """
 
 
@@ -295,21 +390,35 @@ def shell(title: str, body: str, tab: str) -> HTMLResponse:
 <footer>cited or buried · does the AI answer quote your page, or just rank it · "quoted" is a
 directional signal captured from one answer engine, not a Google-AIO oracle ·
 <a href="https://github.com/MagicLex/cited-or-buried">source</a></footer>
-</div></body></html>""")
+</div><script>{JS}</script></body></html>""")
 
 
 app = FastAPI()
 
 
+# ---- the bar chart: one bar per result, in search order, height = model odds --
+
+def _chart(g, active: bool = True) -> str:
+    """Results in search order as bars. Height = the model's citation odds, gold
+    bar + a ✓ tick for the pages the AI actually quoted, slate for the rest. Shows
+    at a glance that the quoted pages are not the tallest or the leftmost."""
+    gg = g.sort_values("rank").head(10)
+    bars = ""
+    for i, (_, r) in enumerate(gg.iterrows()):
+        hit = int(r["cited"]) == 1
+        h = max(7, int(round(float(r["model_score"]) * 100)))
+        dom = html.escape(_domain(r["url"]))
+        pct = int(round(float(r["model_score"]) * 100))
+        tick = '<span class="tick">✓ quoted</span>' if hit else ""
+        bars += (f'<div class="bar {"hit" if hit else ""}" title="#{int(r["rank"])} {dom} · {pct}% odds">'
+                 f'<div class="col" style="--h:{h}%;--d:{i * 55}ms">{tick}</div>'
+                 f'<div class="rk">#{int(r["rank"])}</div></div>')
+    on = " on" if active else ""
+    return (f'<div class="chart{on}">{bars}</div>'
+            f'<div class="axis"><span>search rank 1 →</span><span>bar height = model citation odds</span></div>')
+
+
 # ---- gallery ----------------------------------------------------------------
-
-def _doc_line(r, win: bool) -> str:
-    dom = html.escape(_domain(r["url"]))
-    ti = html.escape((r["title"] or "")[:64])
-    chip = f'<span class="rankchip">#{int(r["rank"])} in search</span>'
-    return (f'<div class="doc">{_fav(r["url"])}<div class="txt">'
-            f'<div class="dom">{dom}</div><div class="ti">{ti}</div></div>{chip}</div>')
-
 
 @app.get("/", response_class=HTMLResponse)
 def gallery():
@@ -317,27 +426,21 @@ def gallery():
     auroc = float(m.get("auroc", 0))
     beyond3, not1 = state["beyond3"] * 100, state["not1"] * 100
 
-    hero_html = ""
-    hid = state.get("hero")
-    if hid is not None:
-        g = state["by_q"][hid].sort_values("rank")
+    slides, dots = "", ""
+    for idx, qid in enumerate(state.get("showcase", [])):
+        g = state["by_q"][qid].sort_values("rank")
         query = g["query"].iloc[0]
         top = g.iloc[0]
-        cited = g[g["cited"] == 1].sort_values("rank")
-        winner = cited.iloc[0]
-        extra = len(cited) - 1
-        more = (f'<div class="more">+ {extra} more source{"s" if extra > 1 else ""} '
-                f'the answer pulled, none of them search\'s #1</div>' if extra > 0 else "")
-        hero_html = f"""
-<div class="demo">
-<p class="q">query &nbsp;<b>{html.escape(query)}</b></p>
-<div class="duel">
-<div class="side lose"><div class="lab">search's top result <span class="tag">not quoted</span></div>
-{_doc_line(top, False)}</div>
-<div class="arrow">the AI answer skipped it and reached down for ↓</div>
-<div class="side win"><div class="lab">what the AI actually quoted <span class="tag">✓ cited</span></div>
-{_doc_line(winner, True)}{more}</div>
-</div></div>"""
+        winner = g[g["cited"] == 1].sort_values("rank").iloc[0]
+        say = (f'Search ranked <s>{html.escape(_domain(top["url"]))}</s> #1, and the AI answer '
+               f'skipped it. It quoted <b>{html.escape(_domain(winner["url"]))}</b>, '
+               f'which sat at #{int(winner["rank"])}.')
+        slides += (f'<div class="slide{" on" if idx == 0 else ""}">'
+                   f'<p class="q"><span class="lead">the gap · live from the corpus</span>'
+                   f'{html.escape(query)}</p><p class="say">{say}</p>{_chart(g, active=idx == 0)}</div>')
+        dots += f'<b class="{"on" if idx == 0 else ""}"></b>'
+    show = (f'<div class="show rise"><div class="slides">{slides}</div>'
+            f'<div class="dots">{dots}</div></div>') if slides else ""
 
     rows = ""
     for q in state["queries"][:80]:
@@ -346,21 +449,23 @@ def gallery():
                  f'<span class="chips">{chips}</span><span class="go">›</span></a>')
 
     body = f"""
-<div class="hero"><div class="kick">generative engine optimization</div>
+<div class="herogrid">
+<div class="heroleft rise"><div class="kick">generative engine optimization</div>
 <h1>Search ranks you. The AI answer <em>quotes</em> someone else.</h1>
-<p class="lede">Ranking #1 is not the same as getting cited. Here is who the AI answer actually
-quotes, per query, and a model that predicts whether it will quote your page.</p></div>
-{hero_html}
-<div class="strip">
-<div class="stat"><div class="n">{beyond3:.0f}%</div><div class="c">of AI citations go to a page
-that was <b>not</b> in the top-3 search results</div></div>
-<div class="stat"><div class="n">{not1:.0f}%</div><div class="c">of citations are not even the
-#1 result the search engine returned</div></div>
-<div class="stat"><div class="n">{auroc:.2f}</div><div class="c">AUROC: the model calls which page
-gets quoted, held out on {len(state['by_q'])} queries</div></div>
-</div>
+<p class="lede">Ranking #1 is not the same as getting cited. Watch who the AI answer actually
+quotes, query after query, then score your own page against it.</p>
 <div class="cta-row"><a class="btn" href="coach">Score your page →</a>
-<span class="hint">paste a query and a URL, get its citation odds</span></div>
+<span class="hint">paste a query + URL</span></div></div>
+{show}
+</div>
+<div class="strip">
+<div class="stat"><div class="n" data-count="{beyond3:.0f}" data-suf="%">0%</div><div class="c">of AI citations
+go to a page that was <b>not</b> in the top-3 search results</div></div>
+<div class="stat"><div class="n" data-count="{not1:.0f}" data-suf="%">0%</div><div class="c">of citations are
+not even the <b>#1</b> result the search engine returned</div></div>
+<div class="stat"><div class="n" data-count="{auroc:.2f}" data-dec="2">0.00</div><div class="c">AUROC: the model
+calls which page gets quoted, held out on {len(state['by_q'])} queries</div></div>
+</div>
 <div class="sechead"><span>browse the gap</span><span>chips = the search ranks the AI quoted</span></div>
 <div class="qlist">{rows}</div>"""
     return shell("cited or buried", body, "gallery")
@@ -416,6 +521,7 @@ def query_view(qid: str):
 <p style="margin:18px 0 0"><a class="back" href=".">← the gap</a></p>
 <h2 class="qtitle">{html.escape(query)}</h2>
 <p class="qverdict">{verdict}</p>
+<div class="detchart rise"><p class="cap">search order, and who got quoted</p>{_chart(g)}</div>
 <div class="cols">
 <div><p class="colh">what search ranked</p>{left}</div>
 <div><p class="colh">what the AI quoted</p>{right}</div>
@@ -456,6 +562,20 @@ def _verdict_word(p: float) -> str:
     return "Unlikely to be quoted"
 
 
+def _dial(prob: float) -> str:
+    c = 2 * math.pi * 56
+    off = c * (1 - min(1.0, max(0.0, prob)))
+    pct = int(round(prob * 100))
+    return (f'<div class="dial"><svg width="132" height="132" viewBox="0 0 132 132">'
+            f'<circle cx="66" cy="66" r="56" fill="none" stroke="#eee7d5" stroke-width="12"/>'
+            f'<circle class="arc" cx="66" cy="66" r="56" fill="none" stroke="url(#g)" stroke-width="12" '
+            f'stroke-linecap="round" style="--c:{c:.1f};--off:{off:.1f}"/>'
+            f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+            f'<stop offset="0" stop-color="#c98a10"/><stop offset="1" stop-color="#a26c00"/>'
+            f'</linearGradient></defs></svg>'
+            f'<div class="n"><b>{pct}%</b><span>citation odds</span></div></div>')
+
+
 @app.post("/coach", response_class=HTMLResponse)
 def coach_run(query: str = Form(...), url: str = Form(...)):
     dep = state.get("deployment")
@@ -468,7 +588,6 @@ def coach_run(query: str = Form(...), url: str = Form(...)):
         return shell("cited or buried / coach",
                      f'<div class="coachwrap"><div class="err">score error: {html.escape(str(e))}</div></div>', "coach")
     prob = float(pred["cited_prob"])
-    pct = int(round(prob * 100))
     levers = ""
     for reason in pred.get("reasons", []):
         rl = reason.lower()
@@ -480,12 +599,11 @@ def coach_run(query: str = Form(...), url: str = Form(...)):
     body = f"""
 <div class="coachwrap">
 <p style="margin:18px 0 0"><a class="back" href="coach">← score another</a></p>
-<div class="gauge"><div class="big">{pct}%</div>
-<div class="verd">{_verdict_word(prob)}</div>
-<div class="track"><i style="width:{max(3, pct)}%"></i></div>
+<div class="result rise"><div class="dialwrap">{_dial(prob)}
+<div class="rlab"><p class="verd">{_verdict_word(prob)}</p>
 <p class="sub">estimated chance the AI answer for <b>{html.escape(query)}</b> cites
-<a href="{html.escape(url)}" target="_blank" rel="noopener" style="color:var(--gold)">{html.escape(_domain(url))}</a></p>
-{levers}</div></div>"""
+<a href="{html.escape(url)}" target="_blank" rel="noopener">{html.escape(_domain(url))}</a></p></div></div>
+<div class="levers">{levers}</div></div></div>"""
     return shell("cited or buried / coach", body, "coach")
 
 

@@ -1,7 +1,12 @@
 # cited or buried
 
-[![awesome-ml-systems](https://img.shields.io/badge/awesome--ml--systems-%23013-a9750d?labelColor=f6f5f1&style=flat)](https://github.com/MagicLex/awesome-ml-systems)
+[![status](https://img.shields.io/badge/status-work_in_progress-d98b00?labelColor=f6f5f1&style=flat)](https://github.com/MagicLex/awesome-ml-systems)
 [![Hopsworks](https://img.shields.io/badge/built_on-Hopsworks-1CB182?labelColor=f6f5f1&style=flat)](https://www.hopsworks.ai/)
+
+> Work in progress. The finding holds up (pointwise citation AUROC 0.746 vs 0.721
+> for rank alone; 40% of AI citations land below the top-3 search results), but
+> the idea is abstract and the app is being reworked to make that gap felt. Not
+> yet a numbered entry in [awesome-ml-systems](https://github.com/MagicLex/awesome-ml-systems).
 
 Search ranks your page. The AI answer quotes someone else. `cited or buried`
 predicts which one you are: given a search query and a page, it scores the
