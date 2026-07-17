@@ -2,8 +2,8 @@
 
 ![cited or buried](assets/banner.svg)
 
-[![awesome-ml-systems](https://img.shields.io/badge/awesome--ml--systems-dog_house-9ca3af?labelColor=f6f5f1&style=flat)](https://github.com/MagicLex/awesome-ml-systems#the-dog-house)
-[![Hopsworks](https://img.shields.io/badge/built_on-Hopsworks-1CB182?labelColor=f6f5f1&style=flat)](https://www.hopsworks.ai/)
+[![awesome-ml-systems](https://img.shields.io/badge/awesome--ml--systems-dog_house-9ca3af?labelColor=0b0e11&style=flat)](https://github.com/MagicLex/awesome-ml-systems#the-dog-house)
+[![Hopsworks](https://img.shields.io/badge/built_on-Hopsworks-1CB182?labelColor=0b0e11&style=flat)](https://www.hopsworks.ai/)
 
 > **Doghouse project.** The data tells a real story: 40% of AI citations go to a
 > page that was not in the top-3 search results, and rank correlates with citation
@@ -23,6 +23,8 @@ page-scoring coach on top.
 
 Citation is a directional GEO signal from one answer engine, not a Google-AIO
 oracle.
+
+![the gap: search ranks a page #1, the AI answer quotes one that sat lower, shown as a live bar chart per query](assets/the-gap.png)
 
 ## The result
 
@@ -65,15 +67,16 @@ Three honest readings:
 
 Two views, server-rendered (no SPA), light theme.
 
-- **the gap**: every query as two columns. The raw search order on the left,
-  the pages the AI answer actually cited on the right, each with the model's
-  citation score and plain-word reasons. Queries are sorted by how far the
-  citations sit from the top results, so the divergent ones lead.
+- **the gap**: a rotating showcase cycles real queries as a bar chart, one bar
+  per search result in rank order, height is the model's citation odds, gold bar
+  and a tick for the pages the AI actually quoted. Open any query for the full
+  split: the raw search order on the left, what the AI quoted on the right with
+  each source's search-rank badge and plain-word reasons.
 - **score a page**: paste a query and a URL. The `citedscorer` KServe
   deployment fetches the page live, reads its structure and topic match, and
-  returns the citation probability with the levers that moved it (answer up top,
-  schema markup, freshness, structure). No web search: your page against the
-  query.
+  returns the citation odds on a ring dial with the levers that moved it (answer
+  up top, schema markup, freshness, structure). No web search: your page against
+  the query.
 
 ## Architecture (FTI on Hopsworks)
 
@@ -118,5 +121,6 @@ python deploy_serving.py                                              # I1 -> ci
 python app/deploy_app.py                                              # app
 ```
 
-Built on [Hopsworks](https://www.hopsworks.ai/). Part of
-[awesome-ml-systems](https://github.com/MagicLex/awesome-ml-systems) (#013).
+Built on [Hopsworks](https://www.hopsworks.ai/). A
+[dog-house](https://github.com/MagicLex/awesome-ml-systems#the-dog-house) entry in
+[awesome-ml-systems](https://github.com/MagicLex/awesome-ml-systems).
