@@ -1,5 +1,7 @@
 # cited or buried
 
+![cited or buried](assets/banner.svg)
+
 [![status](https://img.shields.io/badge/status-work_in_progress-d98b00?labelColor=f6f5f1&style=flat)](https://github.com/MagicLex/awesome-ml-systems)
 [![Hopsworks](https://img.shields.io/badge/built_on-Hopsworks-1CB182?labelColor=f6f5f1&style=flat)](https://www.hopsworks.ai/)
 
