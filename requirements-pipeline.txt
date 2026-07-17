@@ -1,0 +1,2 @@
+fastembed==0.5.1
+pyarrow

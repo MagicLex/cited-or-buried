@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+model_out/
+logs-job-*/
+data/serp/
+data/env_build.log
+# generated fleet scripts (make_batch.py regenerates them)
+capture_batch*.js
+capture_workflow.js
