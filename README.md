@@ -2,13 +2,17 @@
 
 ![cited or buried](assets/banner.svg)
 
-[![status](https://img.shields.io/badge/status-work_in_progress-d98b00?labelColor=f6f5f1&style=flat)](https://github.com/MagicLex/awesome-ml-systems)
+[![awesome-ml-systems](https://img.shields.io/badge/awesome--ml--systems-dog_house-9ca3af?labelColor=f6f5f1&style=flat)](https://github.com/MagicLex/awesome-ml-systems#the-dog-house)
 [![Hopsworks](https://img.shields.io/badge/built_on-Hopsworks-1CB182?labelColor=f6f5f1&style=flat)](https://www.hopsworks.ai/)
 
-> Work in progress. The finding holds up (pointwise citation AUROC 0.746 vs 0.721
-> for rank alone; 40% of AI citations land below the top-3 search results), but
-> the idea is abstract and the app is being reworked to make that gap felt. Not
-> yet a numbered entry in [awesome-ml-systems](https://github.com/MagicLex/awesome-ml-systems).
+> **Doghouse project.** The data tells a real story: 40% of AI citations go to a
+> page that was not in the top-3 search results, and rank correlates with citation
+> only -0.36. But that gap belongs to the answer engine, not to the model. Over raw
+> search rank the model adds almost nothing: pointwise AUROC 0.746 vs 0.721, and
+> precision@3 +0.003 (rank already saturates the top). So the coach cannot tell you
+> much beyond where you already rank. Full post-mortem in the
+> [awesome-ml-systems dog house](https://github.com/MagicLex/awesome-ml-systems#the-dog-house).
+> Kept public, the corpus is a clean GEO dataset. Fork it if you can do better.
 
 Search ranks your page. The AI answer quotes someone else. `cited or buried`
 predicts which one you are: given a search query and a page, it scores the
